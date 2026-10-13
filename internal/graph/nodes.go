@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var validIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 type Node struct {
 	ID         int64
@@ -15,21 +16,23 @@ type Node struct {
 	Properties map[string]any
 }
 
-func CreateNode(ctx context.Context, pool *pgxpool.Pool, label string, props map[string]any) (Node, error) {
-	if err := ValidateNodeLabel(ctx, pool, label); err != nil {
+func CreateNode(ctx context.Context, q Querier, label string, props map[string]any) (Node, error) {
+	if err := ValidateNodeLabel(ctx, q, label); err != nil {
 		return Node{}, err
 	}
 
-	cypherProps := toCypherMap(props)
+	cypherProps, err := toCypherMap(props)
+	if err != nil {
+		return Node{}, fmt.Errorf("invalid properties: %w", err)
+	}
 
-	// Label is validated against registry — safe to interpolate.
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$ CREATE (n:%s) SET n = %s RETURN id(n), properties(n) $$) AS (id agtype, props agtype)`,
+		`SELECT * FROM cypher('ecosystem', $cypher$ CREATE (n:%s) SET n = %s RETURN id(n), properties(n) $cypher$) AS (id agtype, props agtype)`,
 		label, cypherProps,
 	)
 
 	var idRaw, propsRaw string
-	if err := pool.QueryRow(ctx, query).Scan(&idRaw, &propsRaw); err != nil {
+	if err := q.QueryRow(ctx, query).Scan(&idRaw, &propsRaw); err != nil {
 		return Node{}, fmt.Errorf("creating node: %w", err)
 	}
 
@@ -44,14 +47,14 @@ func CreateNode(ctx context.Context, pool *pgxpool.Pool, label string, props map
 	return node, nil
 }
 
-func GetNode(ctx context.Context, pool *pgxpool.Pool, id int64) (Node, error) {
+func GetNode(ctx context.Context, q Querier, id int64) (Node, error) {
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$ MATCH (n) WHERE id(n) = %d RETURN label(n), properties(n) $$) AS (label agtype, props agtype)`,
+		`SELECT * FROM cypher('ecosystem', $cypher$ MATCH (n) WHERE id(n) = %d RETURN label(n), properties(n) $cypher$) AS (label agtype, props agtype)`,
 		id,
 	)
 
 	var labelRaw, propsRaw string
-	err := pool.QueryRow(ctx, query).Scan(&labelRaw, &propsRaw)
+	err := q.QueryRow(ctx, query).Scan(&labelRaw, &propsRaw)
 	if err != nil {
 		return Node{}, fmt.Errorf("node %d not found: %w", id, err)
 	}
@@ -66,16 +69,19 @@ func GetNode(ctx context.Context, pool *pgxpool.Pool, id int64) (Node, error) {
 	return node, nil
 }
 
-func UpdateNode(ctx context.Context, pool *pgxpool.Pool, id int64, props map[string]any) (Node, error) {
-	cypherProps := toCypherMap(props)
+func UpdateNode(ctx context.Context, q Querier, id int64, props map[string]any) (Node, error) {
+	cypherProps, err := toCypherMap(props)
+	if err != nil {
+		return Node{}, fmt.Errorf("invalid properties: %w", err)
+	}
 
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$ MATCH (n) WHERE id(n) = %d SET n += %s RETURN label(n), properties(n) $$) AS (label agtype, props agtype)`,
+		`SELECT * FROM cypher('ecosystem', $cypher$ MATCH (n) WHERE id(n) = %d SET n += %s RETURN label(n), properties(n) $cypher$) AS (label agtype, props agtype)`,
 		id, cypherProps,
 	)
 
 	var labelRaw, propsRaw string
-	if err := pool.QueryRow(ctx, query).Scan(&labelRaw, &propsRaw); err != nil {
+	if err := q.QueryRow(ctx, query).Scan(&labelRaw, &propsRaw); err != nil {
 		return Node{}, fmt.Errorf("updating node %d: %w", id, err)
 	}
 
@@ -89,34 +95,34 @@ func UpdateNode(ctx context.Context, pool *pgxpool.Pool, id int64, props map[str
 	return node, nil
 }
 
-func DeleteNode(ctx context.Context, pool *pgxpool.Pool, id int64) error {
+func DeleteNode(ctx context.Context, q Querier, id int64) error {
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$ MATCH (n) WHERE id(n) = %d DETACH DELETE n $$) AS (result agtype)`,
+		`SELECT * FROM cypher('ecosystem', $cypher$ MATCH (n) WHERE id(n) = %d DETACH DELETE n $cypher$) AS (result agtype)`,
 		id,
 	)
 
-	_, err := pool.Exec(ctx, query)
+	_, err := q.Exec(ctx, query)
 	if err != nil {
 		return fmt.Errorf("deleting node %d: %w", id, err)
 	}
 	return nil
 }
 
-func ListNodes(ctx context.Context, pool *pgxpool.Pool, label string) ([]Node, error) {
+func ListNodes(ctx context.Context, q Querier, label string) ([]Node, error) {
 	var query string
 	if label != "" {
-		if err := ValidateNodeLabel(ctx, pool, label); err != nil {
+		if err := ValidateNodeLabel(ctx, q, label); err != nil {
 			return nil, err
 		}
 		query = fmt.Sprintf(
-			`SELECT * FROM cypher('ecosystem', $$ MATCH (n:%s) RETURN id(n), properties(n) $$) AS (id agtype, props agtype)`,
+			`SELECT * FROM cypher('ecosystem', $cypher$ MATCH (n:%s) RETURN id(n), properties(n) $cypher$) AS (id agtype, props agtype)`,
 			label,
 		)
 	} else {
-		query = `SELECT * FROM cypher('ecosystem', $$ MATCH (n) RETURN id(n), label(n), properties(n) $$) AS (id agtype, label agtype, props agtype)`
+		query = `SELECT * FROM cypher('ecosystem', $cypher$ MATCH (n) RETURN id(n), label(n), properties(n) $cypher$) AS (id agtype, label agtype, props agtype)`
 	}
 
-	rows, err := pool.Query(ctx, query)
+	rows, err := q.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -145,17 +151,17 @@ func ListNodes(ctx context.Context, pool *pgxpool.Pool, label string) ([]Node, e
 	return nodes, rows.Err()
 }
 
-func SearchNodes(ctx context.Context, pool *pgxpool.Pool, label, namePattern string) ([]Node, error) {
-	if err := ValidateNodeLabel(ctx, pool, label); err != nil {
+func SearchNodes(ctx context.Context, q Querier, label, namePattern string) ([]Node, error) {
+	if err := ValidateNodeLabel(ctx, q, label); err != nil {
 		return nil, err
 	}
 
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$ MATCH (n:%s) WHERE n.name =~ '%s' RETURN id(n), properties(n) $$) AS (id agtype, props agtype)`,
-		label, cypherRegexFromLike(namePattern),
+		`SELECT * FROM cypher('ecosystem', $cypher$ MATCH (n:%s) WHERE n.name =~ '%s' RETURN id(n), properties(n) $cypher$) AS (id agtype, props agtype)`,
+		label, escapeCypherString(cypherRegexFromLike(namePattern)),
 	)
 
-	rows, err := pool.Query(ctx, query)
+	rows, err := q.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -176,27 +182,36 @@ func SearchNodes(ctx context.Context, pool *pgxpool.Pool, label, namePattern str
 	return nodes, rows.Err()
 }
 
-// toCypherMap converts a Go map to AGE Cypher property map syntax: {key: 'val', num: 42}
-func toCypherMap(props map[string]any) string {
+func toCypherMap(props map[string]any) (string, error) {
 	if len(props) == 0 {
-		return "{}"
+		return "{}", nil
 	}
 	parts := make([]string, 0, len(props))
 	for k, v := range props {
+		if !validIdentifier.MatchString(k) {
+			return "", fmt.Errorf("invalid property key: %q", k)
+		}
 		switch val := v.(type) {
 		case string:
-			escaped := strings.ReplaceAll(val, "'", "\\'")
-			parts = append(parts, fmt.Sprintf("%s: '%s'", k, escaped))
+			parts = append(parts, fmt.Sprintf("%s: '%s'", k, escapeCypherString(val)))
 		case float64, float32, int, int64, int32:
 			parts = append(parts, fmt.Sprintf("%s: %v", k, val))
 		case bool:
 			parts = append(parts, fmt.Sprintf("%s: %v", k, val))
 		default:
 			j, _ := json.Marshal(val)
-			parts = append(parts, fmt.Sprintf("%s: '%s'", k, string(j)))
+			parts = append(parts, fmt.Sprintf("%s: '%s'", k, escapeCypherString(string(j))))
 		}
 	}
-	return "{" + strings.Join(parts, ", ") + "}"
+	return "{" + strings.Join(parts, ", ") + "}", nil
+}
+
+func escapeCypherString(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "'", "\\'")
+	s = strings.ReplaceAll(s, "$$", "")
+	s = strings.ReplaceAll(s, "$cypher$", "")
+	return s
 }
 
 func cypherRegexFromLike(pattern string) string {

@@ -18,6 +18,17 @@ type AppliedMigration struct {
 }
 
 func Run(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS, dir string) ([]AppliedMigration, error) {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring connection for migration lock: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(hashtext('cartograph_migrate'))"); err != nil {
+		return nil, fmt.Errorf("acquiring migration lock: %w", err)
+	}
+	defer conn.Exec(ctx, "SELECT pg_advisory_unlock(hashtext('cartograph_migrate'))")
+
 	if err := ensureMigrationsTable(ctx, pool); err != nil {
 		return nil, err
 	}

@@ -65,9 +65,15 @@ func Import(ctx context.Context, pool *pgxpool.Pool, nodesFile, edgesFile string
 		}
 	}
 
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return Result{}, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	nameToID := make(map[string]int64)
 	for _, n := range nodes {
-		created, err := graph.CreateNode(ctx, pool, n.Label, n.Properties)
+		created, err := graph.CreateNode(ctx, tx, n.Label, n.Properties)
 		if err != nil {
 			return Result{}, fmt.Errorf("creating node %v: %w", n.Properties["name"], err)
 		}
@@ -80,11 +86,15 @@ func Import(ctx context.Context, pool *pgxpool.Pool, nodesFile, edgesFile string
 	for _, e := range edges {
 		srcID := nameToID[e.Source]
 		tgtID := nameToID[e.Target]
-		_, err := graph.CreateEdge(ctx, pool, e.Type, srcID, tgtID, e.Properties)
+		_, err := graph.CreateEdge(ctx, tx, e.Type, srcID, tgtID, e.Properties)
 		if err != nil {
 			return Result{}, fmt.Errorf("creating edge %s->%s->%s: %w", e.Source, e.Type, e.Target, err)
 		}
 		edgesCreated++
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Result{}, fmt.Errorf("committing transaction: %w", err)
 	}
 
 	return Result{NodesCreated: len(nodes), EdgesCreated: edgesCreated}, nil

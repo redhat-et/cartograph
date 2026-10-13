@@ -4,8 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+type Querier interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 type NodeType struct {
 	Label       string
@@ -19,8 +26,8 @@ type EdgeType struct {
 	Description  string
 }
 
-func ListNodeTypes(ctx context.Context, pool *pgxpool.Pool) ([]NodeType, error) {
-	rows, err := pool.Query(ctx, "SELECT label, description FROM node_types ORDER BY label")
+func ListNodeTypes(ctx context.Context, q Querier) ([]NodeType, error) {
+	rows, err := q.Query(ctx, "SELECT label, description FROM node_types ORDER BY label")
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +44,8 @@ func ListNodeTypes(ctx context.Context, pool *pgxpool.Pool) ([]NodeType, error) 
 	return types, rows.Err()
 }
 
-func ListEdgeTypes(ctx context.Context, pool *pgxpool.Pool) ([]EdgeType, error) {
-	rows, err := pool.Query(ctx, "SELECT name, valid_sources, valid_targets, description FROM edge_types ORDER BY name")
+func ListEdgeTypes(ctx context.Context, q Querier) ([]EdgeType, error) {
+	rows, err := q.Query(ctx, "SELECT name, valid_sources, valid_targets, description FROM edge_types ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -55,9 +62,9 @@ func ListEdgeTypes(ctx context.Context, pool *pgxpool.Pool) ([]EdgeType, error) 
 	return types, rows.Err()
 }
 
-func ValidateNodeLabel(ctx context.Context, pool *pgxpool.Pool, label string) error {
+func ValidateNodeLabel(ctx context.Context, q Querier, label string) error {
 	var exists bool
-	err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM node_types WHERE label = $1)", label).Scan(&exists)
+	err := q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM node_types WHERE label = $1)", label).Scan(&exists)
 	if err != nil {
 		return err
 	}
@@ -67,9 +74,9 @@ func ValidateNodeLabel(ctx context.Context, pool *pgxpool.Pool, label string) er
 	return nil
 }
 
-func ValidateEdge(ctx context.Context, pool *pgxpool.Pool, edgeType, sourceLabel, targetLabel string) error {
+func ValidateEdge(ctx context.Context, q Querier, edgeType, sourceLabel, targetLabel string) error {
 	var validSources, validTargets []string
-	err := pool.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		"SELECT valid_sources, valid_targets FROM edge_types WHERE name = $1",
 		edgeType).Scan(&validSources, &validTargets)
 	if err != nil {
@@ -81,6 +88,18 @@ func ValidateEdge(ctx context.Context, pool *pgxpool.Pool, edgeType, sourceLabel
 	}
 	if !contains(validTargets, targetLabel) {
 		return fmt.Errorf("edge type %q does not allow target label %q (allowed: %v)", edgeType, targetLabel, validTargets)
+	}
+	return nil
+}
+
+func ValidateEdgeType(ctx context.Context, q Querier, edgeType string) error {
+	var exists bool
+	err := q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM edge_types WHERE name = $1)", edgeType).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("unknown edge type: %q", edgeType)
 	}
 	return nil
 }

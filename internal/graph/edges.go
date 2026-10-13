@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Edge struct {
@@ -16,37 +15,40 @@ type Edge struct {
 	Properties map[string]any
 }
 
-func CreateEdge(ctx context.Context, pool *pgxpool.Pool, edgeType string, sourceID, targetID int64, props map[string]any) (Edge, error) {
-	sourceNode, err := GetNode(ctx, pool, sourceID)
+func CreateEdge(ctx context.Context, q Querier, edgeType string, sourceID, targetID int64, props map[string]any) (Edge, error) {
+	sourceNode, err := GetNode(ctx, q, sourceID)
 	if err != nil {
 		return Edge{}, fmt.Errorf("source node: %w", err)
 	}
-	targetNode, err := GetNode(ctx, pool, targetID)
+	targetNode, err := GetNode(ctx, q, targetID)
 	if err != nil {
 		return Edge{}, fmt.Errorf("target node: %w", err)
 	}
 
-	if err := ValidateEdge(ctx, pool, edgeType, sourceNode.Label, targetNode.Label); err != nil {
+	if err := ValidateEdge(ctx, q, edgeType, sourceNode.Label, targetNode.Label); err != nil {
 		return Edge{}, err
 	}
 
 	if props == nil {
 		props = map[string]any{}
 	}
-	cypherProps := toCypherMap(props)
+	cypherProps, err := toCypherMap(props)
+	if err != nil {
+		return Edge{}, fmt.Errorf("invalid properties: %w", err)
+	}
 
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$
+		`SELECT * FROM cypher('ecosystem', $cypher$
 			MATCH (a), (b)
 			WHERE id(a) = %d AND id(b) = %d
 			CREATE (a)-[e:%s %s]->(b)
 			RETURN id(e)
-		$$) AS (id agtype)`,
+		$cypher$) AS (id agtype)`,
 		sourceID, targetID, edgeType, cypherProps,
 	)
 
 	var idRaw string
-	if err := pool.QueryRow(ctx, query).Scan(&idRaw); err != nil {
+	if err := q.QueryRow(ctx, query).Scan(&idRaw); err != nil {
 		return Edge{}, fmt.Errorf("creating edge: %w", err)
 	}
 
@@ -55,18 +57,18 @@ func CreateEdge(ctx context.Context, pool *pgxpool.Pool, edgeType string, source
 	return edge, nil
 }
 
-func GetEdge(ctx context.Context, pool *pgxpool.Pool, id int64) (Edge, error) {
+func GetEdge(ctx context.Context, q Querier, id int64) (Edge, error) {
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$
+		`SELECT * FROM cypher('ecosystem', $cypher$
 			MATCH (a)-[e]->(b)
 			WHERE id(e) = %d
 			RETURN label(e), id(a), id(b), properties(e)
-		$$) AS (type agtype, src agtype, tgt agtype, props agtype)`,
+		$cypher$) AS (type agtype, src agtype, tgt agtype, props agtype)`,
 		id,
 	)
 
 	var typeRaw, srcRaw, tgtRaw, propsRaw string
-	if err := pool.QueryRow(ctx, query).Scan(&typeRaw, &srcRaw, &tgtRaw, &propsRaw); err != nil {
+	if err := q.QueryRow(ctx, query).Scan(&typeRaw, &srcRaw, &tgtRaw, &propsRaw); err != nil {
 		return Edge{}, fmt.Errorf("edge %d not found: %w", id, err)
 	}
 
@@ -78,37 +80,40 @@ func GetEdge(ctx context.Context, pool *pgxpool.Pool, id int64) (Edge, error) {
 	return edge, nil
 }
 
-func DeleteEdge(ctx context.Context, pool *pgxpool.Pool, id int64) error {
+func DeleteEdge(ctx context.Context, q Querier, id int64) error {
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$
+		`SELECT * FROM cypher('ecosystem', $cypher$
 			MATCH ()-[e]->()
 			WHERE id(e) = %d
 			DELETE e
-		$$) AS (result agtype)`,
+		$cypher$) AS (result agtype)`,
 		id,
 	)
-	_, err := pool.Exec(ctx, query)
+	_, err := q.Exec(ctx, query)
 	return err
 }
 
-func ListEdges(ctx context.Context, pool *pgxpool.Pool, edgeType string) ([]Edge, error) {
+func ListEdges(ctx context.Context, q Querier, edgeType string) ([]Edge, error) {
 	var query string
 	if edgeType != "" {
+		if err := ValidateEdgeType(ctx, q, edgeType); err != nil {
+			return nil, err
+		}
 		query = fmt.Sprintf(
-			`SELECT * FROM cypher('ecosystem', $$
+			`SELECT * FROM cypher('ecosystem', $cypher$
 				MATCH (a)-[e:%s]->(b)
 				RETURN id(e), id(a), id(b), properties(e)
-			$$) AS (id agtype, src agtype, tgt agtype, props agtype)`,
+			$cypher$) AS (id agtype, src agtype, tgt agtype, props agtype)`,
 			edgeType,
 		)
 	} else {
-		query = `SELECT * FROM cypher('ecosystem', $$
+		query = `SELECT * FROM cypher('ecosystem', $cypher$
 			MATCH (a)-[e]->(b)
 			RETURN id(e), label(e), id(a), id(b), properties(e)
-		$$) AS (id agtype, type agtype, src agtype, tgt agtype, props agtype)`
+		$cypher$) AS (id agtype, type agtype, src agtype, tgt agtype, props agtype)`
 	}
 
-	rows, err := pool.Query(ctx, query)
+	rows, err := q.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var agtypeAnnotation = regexp.MustCompile(`::(?:vertex|edge|path)`)
@@ -16,7 +15,11 @@ func stripAgtypeAnnotations(s string) string {
 	return agtypeAnnotation.ReplaceAllString(s, "")
 }
 
-func GetNeighbors(ctx context.Context, pool *pgxpool.Pool, nodeID int64, edgeType, direction string) ([]Node, error) {
+func GetNeighbors(ctx context.Context, q Querier, nodeID int64, edgeType, direction string) ([]Node, error) {
+	if err := ValidateEdgeType(ctx, q, edgeType); err != nil {
+		return nil, err
+	}
+
 	var pattern string
 	switch direction {
 	case "outgoing":
@@ -30,15 +33,15 @@ func GetNeighbors(ctx context.Context, pool *pgxpool.Pool, nodeID int64, edgeTyp
 	}
 
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$
+		`SELECT * FROM cypher('ecosystem', $cypher$
 			MATCH %s
 			WHERE id(a) = %d
 			RETURN id(b), label(b), properties(b)
-		$$) AS (id agtype, label agtype, props agtype)`,
+		$cypher$) AS (id agtype, label agtype, props agtype)`,
 		pattern, nodeID,
 	)
 
-	rows, err := pool.Query(ctx, query)
+	rows, err := q.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -59,24 +62,24 @@ func GetNeighbors(ctx context.Context, pool *pgxpool.Pool, nodeID int64, edgeTyp
 	return nodes, rows.Err()
 }
 
-func FindPath(ctx context.Context, pool *pgxpool.Pool, fromID, toID int64, maxHops int) ([]Node, []Edge, error) {
+func FindPath(ctx context.Context, q Querier, fromID, toID int64, maxHops int) ([]Node, []Edge, error) {
 	if maxHops <= 0 || maxHops > 10 {
 		maxHops = 5
 	}
 
 	// AGE may not support shortestPath — use variable-length path match
 	query := fmt.Sprintf(
-		`SELECT * FROM cypher('ecosystem', $$
+		`SELECT * FROM cypher('ecosystem', $cypher$
 			MATCH p = (a)-[*1..%d]-(b)
 			WHERE id(a) = %d AND id(b) = %d
 			RETURN nodes(p), relationships(p)
 			LIMIT 1
-		$$) AS (nodes agtype, rels agtype)`,
+		$cypher$) AS (nodes agtype, rels agtype)`,
 		maxHops, fromID, toID,
 	)
 
 	var nodesRaw, relsRaw string
-	if err := pool.QueryRow(ctx, query).Scan(&nodesRaw, &relsRaw); err != nil {
+	if err := q.QueryRow(ctx, query).Scan(&nodesRaw, &relsRaw); err != nil {
 		return nil, nil, fmt.Errorf("no path found between %d and %d within %d hops: %w", fromID, toID, maxHops, err)
 	}
 

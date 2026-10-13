@@ -99,6 +99,59 @@ func TestListNodes(t *testing.T) {
 	}
 }
 
+func TestCreateNodeRejectsInvalidPropertyKey(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+
+	_, err := graph.CreateNode(ctx, pool, "Company", map[string]any{
+		"name":                   "test",
+		"foo: 'x'}) RETURN 1 --": "injection",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid property key")
+	}
+}
+
+func TestCreateNodeEscapesDollarQuote(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+
+	node, err := graph.CreateNode(ctx, pool, "Company", map[string]any{
+		"name": "test $$ injection attempt",
+	})
+	if err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+	got, err := graph.GetNode(ctx, pool, node.ID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	name, _ := got.Properties["name"].(string)
+	if name != "test  injection attempt" {
+		t.Fatalf("expected dollar signs stripped, got %q", name)
+	}
+}
+
+func TestCreateNodeEscapesBackslashQuote(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+
+	node, err := graph.CreateNode(ctx, pool, "Company", map[string]any{
+		"name": "test\\' injection",
+	})
+	if err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+	got, err := graph.GetNode(ctx, pool, node.ID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	name, _ := got.Properties["name"].(string)
+	if name != "test\\' injection" {
+		t.Fatalf("expected escaped value preserved, got %q", name)
+	}
+}
+
 func TestSearchNodes(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
