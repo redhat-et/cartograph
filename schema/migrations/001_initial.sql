@@ -1,7 +1,11 @@
 -- Creates the AGE graph, schema migration tracking, and type registry tables.
 
 -- AGE graph
-SELECT create_graph('ecosystem');
+DO $$ BEGIN
+    PERFORM create_graph('ecosystem');
+EXCEPTION WHEN OTHERS THEN
+    -- graph already exists
+END $$;
 
 -- Type registry: node types
 CREATE TABLE IF NOT EXISTS node_types (
