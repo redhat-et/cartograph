@@ -1,1 +1,17 @@
 .worktrees/
+.superpowers/
+
+# Go
+/cartograph
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Build artifacts
+/dist/

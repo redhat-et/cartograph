@@ -1,0 +1,55 @@
+# Builds Apache AGE into the Crunchy Postgres 16 image.
+# Multi-arch: linux/amd64, linux/arm64.
+#
+# The Crunchy image is a stripped production image with no package manager,
+# so we compile AGE in a UBI9 builder with PGDG's postgresql16 headers,
+# then copy artifacts into the Crunchy runtime image.
+# flex, bison, and perl-IPC-Run are not in UBI9's repos, so we pull them
+# from CentOS Stream 9 (ABI-compatible).
+
+ARG AGE_VERSION=1.6.0
+ARG BASE_IMAGE=registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi9-16.15-2633
+
+FROM registry.access.redhat.com/ubi9:latest AS builder
+
+RUN ARCH=$(uname -m) \
+    && dnf install -y \
+    --repofrompath "cs-appstream,https://mirror.stream.centos.org/9-stream/AppStream/${ARCH}/os/" \
+    --repofrompath "cs-crb,https://mirror.stream.centos.org/9-stream/CRB/${ARCH}/os/" \
+    --nogpgcheck \
+    flex \
+    bison \
+    perl-IPC-Run \
+    && dnf install -y \
+    https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-${ARCH}/pgdg-redhat-repo-latest.noarch.rpm \
+    && dnf install -y \
+    gcc \
+    make \
+    git \
+    clang \
+    llvm \
+    redhat-rpm-config \
+    postgresql16-server \
+    perl-FindBin \
+    postgresql16-devel \
+    && dnf clean all
+
+ARG AGE_VERSION
+WORKDIR /build
+
+RUN git clone --branch PG16/v${AGE_VERSION}-rc0 --depth 1 \
+    https://github.com/apache/age.git
+
+WORKDIR /build/age
+
+RUN make USE_PGXS=1 PG_CONFIG=/usr/pgsql-16/bin/pg_config install
+
+FROM ${BASE_IMAGE}
+
+USER root
+
+COPY --from=builder /usr/pgsql-16/lib/age.so /usr/pgsql-16/lib/
+COPY --from=builder /usr/pgsql-16/lib/bitcode/age/ /usr/pgsql-16/lib/bitcode/age/
+COPY --from=builder /usr/pgsql-16/share/extension/age* /usr/pgsql-16/share/extension/
+
+USER 26
