@@ -5,14 +5,18 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/redhat-et/cartograph/internal/db"
 	"github.com/redhat-et/cartograph/internal/export"
+	cartomcp "github.com/redhat-et/cartograph/internal/mcp"
 	"github.com/redhat-et/cartograph/internal/migrate"
 	"github.com/redhat-et/cartograph/internal/seed"
 	"github.com/redhat-et/cartograph/schema"
+
+	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
@@ -32,7 +36,7 @@ func main() {
 	case "export":
 		cmdExport(ctx)
 	case "serve":
-		fmt.Println("serve: not yet implemented")
+		cmdServe(ctx)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -137,4 +141,52 @@ func cmdExport(ctx context.Context) {
 		os.Exit(1)
 	}
 	slog.Info("export complete", "nodes", result.NodesExported, "edges", result.EdgesExported)
+}
+
+func cmdServe(ctx context.Context) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	dbURL := fs.String("db-url", os.Getenv("CARTOGRAPH_DB_URL"), "database connection URL")
+	stdio := fs.Bool("stdio", false, "serve MCP over stdio")
+	httpAddr := fs.String("http", "", "serve MCP over HTTP (e.g. :8080)")
+	fs.Parse(os.Args[2:])
+
+	if *dbURL == "" {
+		slog.Error("--db-url or CARTOGRAPH_DB_URL required")
+		os.Exit(1)
+	}
+
+	if !*stdio && *httpAddr == "" {
+		slog.Error("specify --stdio and/or --http <addr>")
+		os.Exit(1)
+	}
+
+	pool, err := db.Connect(ctx, *dbURL)
+	if err != nil {
+		slog.Error("connecting to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close(pool)
+
+	srv := cartomcp.NewServer(pool)
+
+	if *stdio {
+		slog.Info("serving MCP over stdio")
+		if err := srv.Run(ctx, &gomcp.StdioTransport{}); err != nil {
+			slog.Error("stdio server error", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *httpAddr != "" {
+		handler := gomcp.NewStreamableHTTPHandler(
+			func(_ *http.Request) *gomcp.Server { return srv },
+			nil,
+		)
+		slog.Info("serving MCP over HTTP", "addr", *httpAddr)
+		if err := http.ListenAndServe(*httpAddr, handler); err != nil {
+			slog.Error("http server error", "error", err)
+			os.Exit(1)
+		}
+	}
 }
