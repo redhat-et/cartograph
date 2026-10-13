@@ -2,7 +2,7 @@
 # Trigger or restore Crunchy PGO backups.
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-cartograph-prod}"
+NAMESPACE="${NAMESPACE:-cartograph}"
 CLUSTER_NAME="${CLUSTER_NAME:-cartograph-db}"
 
 usage() {
@@ -14,7 +14,7 @@ usage() {
     echo "  restore          Restore from backup (creates new cluster, requires manual steps)"
     echo ""
     echo "Options:"
-    echo "  --namespace NS   Kubernetes namespace (default: cartograph-prod)"
+    echo "  --namespace NS   Kubernetes namespace (default: cartograph)"
     echo "  --target-time T  For restore: PITR target (e.g. '2026-10-13 14:30:00+00')"
     exit 1
 }

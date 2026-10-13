@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 
@@ -29,12 +30,16 @@ type seedEdge struct {
 }
 
 func Import(ctx context.Context, pool *pgxpool.Pool, nodesFile, edgesFile string) (Result, error) {
-	nodes, err := loadNodes(nodesFile)
+	return ImportFS(ctx, pool, os.DirFS("."), nodesFile, edgesFile)
+}
+
+func ImportFS(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS, nodesFile, edgesFile string) (Result, error) {
+	nodes, err := loadNodes(fsys, nodesFile)
 	if err != nil {
 		return Result{}, fmt.Errorf("loading nodes: %w", err)
 	}
 
-	edges, err := loadEdges(edgesFile)
+	edges, err := loadEdges(fsys, edgesFile)
 	if err != nil {
 		return Result{}, fmt.Errorf("loading edges: %w", err)
 	}
@@ -100,8 +105,8 @@ func Import(ctx context.Context, pool *pgxpool.Pool, nodesFile, edgesFile string
 	return Result{NodesCreated: len(nodes), EdgesCreated: edgesCreated}, nil
 }
 
-func loadNodes(path string) ([]seedNode, error) {
-	data, err := os.ReadFile(path)
+func loadNodes(fsys fs.FS, path string) ([]seedNode, error) {
+	data, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +114,8 @@ func loadNodes(path string) ([]seedNode, error) {
 	return nodes, json.Unmarshal(data, &nodes)
 }
 
-func loadEdges(path string) ([]seedEdge, error) {
-	data, err := os.ReadFile(path)
+func loadEdges(fsys fs.FS, path string) ([]seedEdge, error) {
+	data, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil, err
 	}

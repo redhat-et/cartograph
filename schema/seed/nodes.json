@@ -1,0 +1,11 @@
+[
+  {"label": "Company", "properties": {"name": "Acme Corp", "domain": "acme.example.com", "industry": "Cloud Infrastructure"}},
+  {"label": "Company", "properties": {"name": "Widgets Inc", "domain": "widgets.example.com", "industry": "IoT"}},
+  {"label": "Org", "properties": {"name": "Acme Platform Team", "function": "Engineering"}},
+  {"label": "Org", "properties": {"name": "Acme Sales", "function": "Sales"}},
+  {"label": "Person", "properties": {"name": "Alice Zhang", "role": "CTO"}},
+  {"label": "Person", "properties": {"name": "Bob Rivera", "role": "VP Engineering"}},
+  {"label": "Person", "properties": {"name": "Carol Osei", "role": "Account Executive"}},
+  {"label": "Technology", "properties": {"name": "Kubernetes", "category": "Container Orchestration", "license": "Apache-2.0"}},
+  {"label": "Technology", "properties": {"name": "EdgeDB", "category": "Database", "license": "Proprietary"}}
+]

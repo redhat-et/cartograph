@@ -2,14 +2,14 @@
 # Port-forward to the Cartograph database and optionally launch psql.
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-cartograph-prod}"
+NAMESPACE="${NAMESPACE:-cartograph}"
 CLUSTER_NAME="${CLUSTER_NAME:-cartograph-db}"
 
 usage() {
     echo "Usage: $0 [--namespace NS] [--psql]"
     echo ""
     echo "Options:"
-    echo "  --namespace NS   Kubernetes namespace (default: cartograph-prod)"
+    echo "  --namespace NS   Kubernetes namespace (default: cartograph)"
     echo "  --psql           Launch psql after port-forward is ready"
     exit 1
 }

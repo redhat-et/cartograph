@@ -88,7 +88,7 @@ func cmdMigrate(ctx context.Context) {
 func cmdSeed(ctx context.Context) {
 	fs := flag.NewFlagSet("seed", flag.ExitOnError)
 	dbURL := fs.String("db-url", os.Getenv("CARTOGRAPH_DB_URL"), "database connection URL")
-	from := fs.String("from", "schema/seed", "directory containing nodes.json and edges.json")
+	from := fs.String("from", "", "directory containing nodes.json and edges.json (default: built-in example)")
 	fs.Parse(os.Args[2:])
 
 	if *dbURL == "" {
@@ -103,10 +103,18 @@ func cmdSeed(ctx context.Context) {
 	}
 	defer db.Close(pool)
 
-	result, err := seed.Import(ctx, pool,
-		filepath.Join(*from, "nodes.json"),
-		filepath.Join(*from, "edges.json"),
-	)
+	var result seed.Result
+	if *from != "" {
+		result, err = seed.Import(ctx, pool,
+			filepath.Join(*from, "nodes.json"),
+			filepath.Join(*from, "edges.json"),
+		)
+	} else {
+		result, err = seed.ImportFS(ctx, pool, schema.Seed,
+			"seed/nodes.json",
+			"seed/edges.json",
+		)
+	}
 	if err != nil {
 		slog.Error("seed failed", "error", err)
 		os.Exit(1)

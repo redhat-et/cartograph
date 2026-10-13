@@ -1,0 +1,13 @@
+[
+  {"type": "PART_OF", "source": "Acme Platform Team", "target": "Acme Corp"},
+  {"type": "PART_OF", "source": "Acme Sales", "target": "Acme Corp"},
+  {"type": "MEMBER_OF", "source": "Alice Zhang", "target": "Acme Platform Team"},
+  {"type": "MEMBER_OF", "source": "Bob Rivera", "target": "Acme Platform Team"},
+  {"type": "MEMBER_OF", "source": "Carol Osei", "target": "Acme Sales"},
+  {"type": "REPORTS_TO", "source": "Bob Rivera", "target": "Alice Zhang"},
+  {"type": "DEPLOYS", "source": "Acme Corp", "target": "Kubernetes"},
+  {"type": "DEVELOPS", "source": "Acme Platform Team", "target": "EdgeDB"},
+  {"type": "DEPLOYS", "source": "Widgets Inc", "target": "Kubernetes"},
+  {"type": "PARTNERS_WITH", "source": "Acme Corp", "target": "Widgets Inc"},
+  {"type": "ADVOCATES_FOR", "source": "Alice Zhang", "target": "Kubernetes"}
+]
