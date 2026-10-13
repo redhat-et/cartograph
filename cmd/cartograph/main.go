@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/redhat-et/cartograph/internal/db"
+	"github.com/redhat-et/cartograph/internal/export"
 	"github.com/redhat-et/cartograph/internal/migrate"
+	"github.com/redhat-et/cartograph/internal/seed"
 	"github.com/redhat-et/cartograph/schema"
 )
 
@@ -24,12 +27,12 @@ func main() {
 	switch os.Args[1] {
 	case "migrate":
 		cmdMigrate(ctx)
+	case "seed":
+		cmdSeed(ctx)
+	case "export":
+		cmdExport(ctx)
 	case "serve":
 		fmt.Println("serve: not yet implemented")
-	case "seed":
-		fmt.Println("seed: not yet implemented")
-	case "export":
-		fmt.Println("export: not yet implemented")
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -76,4 +79,62 @@ func cmdMigrate(ctx context.Context) {
 			slog.Info("applied migration", "version", m.Version, "name", m.Name)
 		}
 	}
+}
+
+func cmdSeed(ctx context.Context) {
+	fs := flag.NewFlagSet("seed", flag.ExitOnError)
+	dbURL := fs.String("db-url", os.Getenv("CARTOGRAPH_DB_URL"), "database connection URL")
+	from := fs.String("from", "schema/seed", "directory containing nodes.json and edges.json")
+	fs.Parse(os.Args[2:])
+
+	if *dbURL == "" {
+		slog.Error("--db-url or CARTOGRAPH_DB_URL required")
+		os.Exit(1)
+	}
+
+	pool, err := db.Connect(ctx, *dbURL)
+	if err != nil {
+		slog.Error("connecting to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close(pool)
+
+	result, err := seed.Import(ctx, pool,
+		filepath.Join(*from, "nodes.json"),
+		filepath.Join(*from, "edges.json"),
+	)
+	if err != nil {
+		slog.Error("seed failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("seed complete", "nodes", result.NodesCreated, "edges", result.EdgesCreated)
+}
+
+func cmdExport(ctx context.Context) {
+	fs := flag.NewFlagSet("export", flag.ExitOnError)
+	dbURL := fs.String("db-url", os.Getenv("CARTOGRAPH_DB_URL"), "database connection URL")
+	to := fs.String("to", ".", "output directory for nodes.json and edges.json")
+	fs.Parse(os.Args[2:])
+
+	if *dbURL == "" {
+		slog.Error("--db-url or CARTOGRAPH_DB_URL required")
+		os.Exit(1)
+	}
+
+	pool, err := db.Connect(ctx, *dbURL)
+	if err != nil {
+		slog.Error("connecting to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close(pool)
+
+	result, err := export.Export(ctx, pool,
+		filepath.Join(*to, "nodes.json"),
+		filepath.Join(*to, "edges.json"),
+	)
+	if err != nil {
+		slog.Error("export failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("export complete", "nodes", result.NodesExported, "edges", result.EdgesExported)
 }

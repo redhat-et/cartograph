@@ -1,0 +1,4 @@
+[
+  {"type": "INVESTS_IN", "source": "Acme Corp", "target": "Globex", "properties": {"confidence": "confirmed"}},
+  {"type": "DEVELOPS", "source": "Globex", "target": "RoboSDK", "properties": {}}
+]

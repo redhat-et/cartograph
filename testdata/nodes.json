@@ -1,0 +1,5 @@
+[
+  {"label": "Company", "properties": {"name": "Acme Corp", "hq_country": "US"}},
+  {"label": "Company", "properties": {"name": "Globex", "hq_country": "DE"}},
+  {"label": "Technology", "properties": {"name": "RoboSDK", "type": "oss_project"}}
+]
