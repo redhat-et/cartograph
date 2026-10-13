@@ -179,12 +179,23 @@ func cmdServe(ctx context.Context) {
 	}
 
 	if *httpAddr != "" {
-		handler := gomcp.NewStreamableHTTPHandler(
+		mcpHandler := gomcp.NewStreamableHTTPHandler(
 			func(_ *http.Request) *gomcp.Server { return srv },
 			nil,
 		)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			if err := pool.Ping(r.Context()); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprintf(w, "db: %v", err)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+		})
+		mux.Handle("/", mcpHandler)
 		slog.Info("serving MCP over HTTP", "addr", *httpAddr)
-		if err := http.ListenAndServe(*httpAddr, handler); err != nil {
+		if err := http.ListenAndServe(*httpAddr, mux); err != nil {
 			slog.Error("http server error", "error", err)
 			os.Exit(1)
 		}
