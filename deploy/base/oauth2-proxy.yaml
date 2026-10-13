@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oauth2-proxy-config
+stringData:
+  OAUTH2_PROXY_CLIENT_ID: CHANGE_ME
+  OAUTH2_PROXY_CLIENT_SECRET: CHANGE_ME
+  OAUTH2_PROXY_COOKIE_SECRET: CHANGE_ME_GENERATE_WITH_openssl_rand_base64_32
+  OAUTH2_PROXY_GITHUB_ORG: redhat-et
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  labels:
+    app: oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:latest
+          args:
+            - --provider=github
+            - --email-domain=*
+            - --upstream=http://cartograph:8080
+            - --http-address=0.0.0.0:4180
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --pass-access-token=true
+          envFrom:
+            - secretRef:
+                name: oauth2-proxy-config
+          ports:
+            - containerPort: 4180
+              name: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+spec:
+  selector:
+    app: oauth2-proxy
+  ports:
+    - port: 4180
+      targetPort: http
+      name: http

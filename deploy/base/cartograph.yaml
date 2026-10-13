@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cartograph
+  labels:
+    app: cartograph
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cartograph
+  template:
+    metadata:
+      labels:
+        app: cartograph
+    spec:
+      containers:
+        - name: cartograph
+          image: quay.io/redhat-et/cartograph:latest
+          args: ["serve", "--http", ":8080"]
+          env:
+            - name: CARTOGRAPH_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cartograph-db-pguser-cartograph
+                  key: uri
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cartograph
+spec:
+  selector:
+    app: cartograph
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
