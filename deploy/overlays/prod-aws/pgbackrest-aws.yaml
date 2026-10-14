@@ -1,0 +1,26 @@
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: cartograph-db
+spec:
+  backups:
+    pgbackrest:
+      configuration:
+        - secret:
+            name: pgbackrest-s3-credentials
+      global:
+        repo1-path: /pgbackrest/cartograph
+      repos:
+        - name: repo1
+          s3:
+            bucket: YOUR_BUCKET_NAME
+            region: YOUR_AWS_REGION
+          schedules:
+            full: "0 2 * * *"
+            incremental: "0 */6 * * *"
+          volume:
+            volumeClaimSpec:
+              accessModes: [ReadWriteOnce]
+              resources:
+                requests:
+                  storage: 5Gi

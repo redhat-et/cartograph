@@ -19,23 +19,49 @@ Deploy to OpenShift with Crunchy PGO. Images are on Quay.io.
 ```bash
 oc new-project cartograph
 
-oc create secret generic pgbackrest-s3 \
-  --from-literal=aws-s3-key=YOUR_ACCESS_KEY \
-  --from-literal=aws-s3-key-secret=YOUR_SECRET_KEY
-
-oc create secret generic oauth2-proxy \
-  --from-literal=client-id=YOUR_CLIENT_ID \
-  --from-literal=client-secret=YOUR_CLIENT_SECRET \
-  --from-literal=cookie-secret=$(openssl rand -base64 32)
+# OAuth2 proxy (GitHub provider)
+oc create secret generic oauth2-proxy-config \
+  --from-literal=OAUTH2_PROXY_CLIENT_ID=YOUR_CLIENT_ID \
+  --from-literal=OAUTH2_PROXY_CLIENT_SECRET=YOUR_CLIENT_SECRET \
+  --from-literal=OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 32) \
+  --from-literal=OAUTH2_PROXY_GITHUB_ORG=YOUR_GITHUB_ORG
 ```
 
 ### 2. Deploy with Kustomize
 
+Pick a backup target. With **AWS S3**:
+
 ```bash
-oc apply -k 'https://github.com/redhat-et/cartograph//deploy/prod?ref=main'
+# S3 credentials
+oc create secret generic pgbackrest-s3-credentials \
+  --from-literal=s3.conf="$(printf '[global]\nrepo1-s3-key=%s\nrepo1-s3-key-secret=%s\n' \
+    YOUR_ACCESS_KEY YOUR_SECRET_KEY)"
+
+# Edit deploy/overlays/prod-aws/pgbackrest-aws.yaml to set your bucket and region,
+# or apply directly and patch after:
+oc apply -k 'https://github.com/redhat-et/cartograph//deploy/overlays/prod-aws?ref=main'
 ```
 
-Includes the PostgresCluster CR, Cartograph server, OAuth2 proxy, and route.
+With **MinIO** (self-hosted S3, for dev/test):
+
+```bash
+# Deploy MinIO in its own namespace
+oc create namespace cartograph-minio
+oc -n cartograph-minio create secret generic minio-credentials \
+  --from-literal=MINIO_ROOT_USER=minioadmin \
+  --from-literal=MINIO_ROOT_PASSWORD=$(openssl rand -base64 24)
+oc apply -k 'https://github.com/redhat-et/cartograph//deploy/minio?ref=main'
+
+# pgBackRest credentials (match the MinIO credentials above)
+oc create secret generic pgbackrest-s3-credentials \
+  --from-literal=s3.conf="$(printf '[global]\nrepo1-s3-key=%s\nrepo1-s3-key-secret=%s\n' \
+    minioadmin "$(oc -n cartograph-minio get secret minio-credentials \
+    -o jsonpath='{.data.MINIO_ROOT_PASSWORD}' | base64 -d)")"
+
+oc apply -k 'https://github.com/redhat-et/cartograph//deploy/overlays/prod-minio?ref=main'
+```
+
+Both overlays deploy the PostgresCluster CR, Cartograph server, OAuth2 proxy, and route. OpenShift auto-assigns the route hostname.
 
 ### 3. Initialize the database
 

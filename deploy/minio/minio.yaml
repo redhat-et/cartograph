@@ -4,14 +4,6 @@ metadata:
   name: cartograph-minio
 ---
 apiVersion: v1
-kind: Secret
-metadata:
-  name: minio-credentials
-stringData:
-  MINIO_ROOT_USER: minioadmin
-  MINIO_ROOT_PASSWORD: CHANGE_ME_BEFORE_DEPLOY
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: minio-data
@@ -37,10 +29,16 @@ spec:
       labels:
         app: minio
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: minio
           image: quay.io/minio/minio:latest
           args: ["server", "/data", "--console-address", ":9001"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           envFrom:
             - secretRef:
                 name: minio-credentials

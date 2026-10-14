@@ -27,28 +27,3 @@ spec:
         parameters:
           shared_preload_libraries: age
           search_path: '"$user", public, ag_catalog'
-
-  backups:
-    pgbackrest:
-      configuration:
-        - secret:
-            name: pgbackrest-s3-credentials
-      global:
-        repo1-path: /pgbackrest/cartograph
-        repo1-s3-uri-style: path
-        repo1-storage-verify-tls: "n"
-      repos:
-        - name: repo1
-          s3:
-            bucket: pgbackrest
-            endpoint: minio.cartograph-minio.svc:9000
-            region: us-east-1
-          schedules:
-            full: "0 2 * * *"
-            incremental: "0 */6 * * *"
-          volume:
-            volumeClaimSpec:
-              accessModes: [ReadWriteOnce]
-              resources:
-                requests:
-                  storage: 5Gi

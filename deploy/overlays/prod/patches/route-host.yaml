@@ -1,6 +1,0 @@
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: cartograph
-spec:
-  host: cartograph.apps.CLUSTER_DOMAIN

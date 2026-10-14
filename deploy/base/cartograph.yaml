@@ -14,10 +14,17 @@ spec:
       labels:
         app: cartograph
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: cartograph
           image: quay.io/redhat-et/cartograph:latest
           args: ["serve", "--http", ":8080"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           env:
             - name: CARTOGRAPH_DB_URL
               valueFrom:
