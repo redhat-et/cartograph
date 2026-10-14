@@ -16,6 +16,14 @@ Deploy to OpenShift with Crunchy PGO. Images are on Quay.io.
 
 ### 1. Create project and secrets
 
+Create a [GitHub OAuth App](https://github.com/settings/developers) first:
+
+- **Homepage URL:** `https://cartograph-cartograph.apps.<cluster-domain>`
+- **Redirect URI:** `https://cartograph-cartograph.apps.<cluster-domain>/oauth2/callback`
+
+The route hostname follows the pattern `<route>-<namespace>.apps.<cluster-domain>`.
+You can confirm it after deploying with `oc get route cartograph -o jsonpath='{.spec.host}'`.
+
 ```bash
 oc new-project cartograph
 
@@ -23,7 +31,7 @@ oc new-project cartograph
 oc create secret generic oauth2-proxy-config \
   --from-literal=OAUTH2_PROXY_CLIENT_ID=YOUR_CLIENT_ID \
   --from-literal=OAUTH2_PROXY_CLIENT_SECRET=YOUR_CLIENT_SECRET \
-  --from-literal=OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 32) \
+  --from-literal=OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 24) \
   --from-literal=OAUTH2_PROXY_GITHUB_ORG=YOUR_GITHUB_ORG
 ```
 
@@ -65,14 +73,23 @@ Both overlays deploy the PostgresCluster CR, Cartograph server, OAuth2 proxy, an
 
 ### 3. Initialize the database
 
+Wait for the database pods to become ready, then port-forward to access it locally:
+
 ```bash
+oc wait --for=condition=Ready pod -l postgres-operator.crunchydata.com/role=master --timeout=120s
+oc port-forward svc/cartograph-db-primary 5432:5432 &
+
 go install github.com/redhat-et/cartograph/cmd/cartograph@latest
 
-export CARTOGRAPH_DB_URL=$(oc get secret cartograph-pguser-cartograph \
-  -o jsonpath='{.data.uri}' | base64 -d)
+# Build a localhost URL from the cluster secret
+DB_PASS=$(oc get secret cartograph-db-pguser-cartograph \
+  -o jsonpath='{.data.password}' | base64 -d)
+export CARTOGRAPH_DB_URL="postgresql://cartograph:${DB_PASS}@localhost:5432/cartograph"
 
 cartograph migrate --db-url "$CARTOGRAPH_DB_URL"
 cartograph seed --db-url "$CARTOGRAPH_DB_URL"
+
+kill %1  # stop port-forward
 ```
 
 Seeds built-in example data. Pass `--from <dir>` to load your own `nodes.json` and `edges.json` instead.

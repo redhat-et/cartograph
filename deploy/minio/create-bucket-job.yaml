@@ -10,7 +10,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: mc
-          image: quay.io/minio/mc:latest
+          image: quay.io/hummingbird-community/minio-client:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -31,3 +31,9 @@ spec:
           envFrom:
             - secretRef:
                 name: minio-credentials
+          volumeMounts:
+            - name: mc-config
+              mountPath: /mc/.mc
+      volumes:
+        - name: mc-config
+          emptyDir: {}

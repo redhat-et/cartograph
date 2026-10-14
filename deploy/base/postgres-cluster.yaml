@@ -6,6 +6,14 @@ spec:
   postgresVersion: 16
   image: quay.io/redhat-et/crunchy-postgres-age:16-1.6.0
 
+  users:
+    - name: cartograph
+      databases: [cartograph]
+
+  databaseInitSQL:
+    name: cartograph-db-init
+    key: init.sql
+
   instances:
     - name: primary
       replicas: 1

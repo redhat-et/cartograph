@@ -33,7 +33,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: minio
-          image: quay.io/minio/minio:latest
+          image: quay.io/hummingbird-community/minio:latest
           args: ["server", "/data", "--console-address", ":9001"]
           securityContext:
             allowPrivilegeEscalation: false
