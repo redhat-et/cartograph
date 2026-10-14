@@ -159,11 +159,14 @@ claude mcp add cartograph -- cartograph serve --stdio
 ### Container images
 
 ```bash
-# Database image (PostgreSQL 16 + AGE 1.6.0)
-image/build.sh
-
 # Server image
-podman build -t quay.io/redhat-et/cartograph:latest .
+images/build.sh cartograph
+
+# Database image (PostgreSQL 16 + AGE 1.6.0)
+images/build.sh crunchy-postgres-age
+
+# Both, and push to registry
+images/build.sh --push all
 ```
 
 ### Connecting to a deployed database

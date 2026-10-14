@@ -22,8 +22,9 @@ scripts/local-db.sh start   # podman; prints CARTOGRAPH_DB_URL
 scripts/local-db.sh stop
 
 # container images
-podman build -t cartograph .                          # server
-image/build.sh                                        # database (AGE)
+images/build.sh cartograph                            # server
+images/build.sh crunchy-postgres-age                  # database (AGE)
+images/build.sh --push all                            # both + push
 ```
 
 ## Sandbox environment
@@ -49,7 +50,7 @@ internal/
   migrate/          schema migrations with advisory locking
   seed/             seed import (transactional)
   export/           graph export to JSON
-image/              Containerfile + build script for Crunchy PG16 + AGE
+images/             Containerfiles + build script for server and database
 deploy/             Kustomize manifests (base + prod overlay + minio)
 scripts/            local-db.sh, connect.sh, backup-restore.sh
 ```
